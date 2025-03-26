@@ -1,7 +1,3 @@
-/*
- * Click nbfs://nbhost/SystemFileSystem/Templates/Licenses/license-default.txt to change this license
- * Click nbfs://nbhost/SystemFileSystem/Templates/JSP_Servlet/Servlet.java to edit this template
- */
 package controller;
 
 import dal.DishDAO;
@@ -13,6 +9,8 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import java.util.List;
+import java.text.Normalizer;
+import java.util.regex.Pattern;
 import model.Dish;
 
 /**
@@ -48,6 +46,18 @@ public class addDish extends HttpServlet {
         }
     }
 
+    // Normalize Vietnamese text for comparison
+    private String normalizeVietnamese(String str) {
+        str = Normalizer.normalize(str, Normalizer.Form.NFD);
+        str = str.toLowerCase().trim();
+        return str;
+    }
+    
+    // Check if two Vietnamese strings are equivalent
+    private boolean areVietnameseStringsEqual(String str1, String str2) {
+        return normalizeVietnamese(str1).equals(normalizeVietnamese(str2));
+    }
+
     // <editor-fold defaultstate="collapsed" desc="HttpServlet methods. Click on the + sign on the left to edit the code.">
     /**
      * Handles the HTTP <code>GET</code> method.
@@ -61,40 +71,117 @@ public class addDish extends HttpServlet {
     protected void doGet(HttpServletRequest request, HttpServletResponse response)
             throws ServletException, IOException {
         //processRequest(request, response);
-   
+        request.setCharacterEncoding("UTF-8");
+        
         String name = request.getParameter("name");
         String price_raw = request.getParameter("price");
         String status = request.getParameter("status");
         String image = request.getParameter("image");
-         DishDAO dao = new DishDAO();
-         List<Dish> dishList = dao.getAll();
-
-        // Kiểm tra xem tên món ăn có bị trùng không
-        boolean isDuplicate = false;
-        for (Dish dish : dishList) {
-            if (dish.getDishName().equalsIgnoreCase(name)) {
-                isDuplicate = true;
-                break;
+        
+        // Validate data
+        StringBuilder errorMessage = new StringBuilder();
+        boolean hasError = false;
+        
+        // Validate name
+        if (name == null || name.trim().isEmpty()) {
+            errorMessage.append("Dish name must be between 3 and 100 characters, containing only letters, numbers, and spaces<br>");
+            hasError = true;
+        } else if (name.length() < 3) {  // Add this new check
+            errorMessage.append("Dish name must be between 3 and 100 characters, containing only letters, numbers, and spaces<br>");
+            hasError = true;
+        } else if (name.length() > 100) {
+            errorMessage.append("Dish name must be between 3 and 100 characters, containing only letters, numbers, and spaces<br>");
+            hasError = true;
+        } else {
+            // Allow Vietnamese characters and alphanumeric characters
+            String regex = "^[\\p{L}\\p{M}\\p{N}\\s]+$";
+            if (!Pattern.matches(regex, name)) {
+                errorMessage.append("Dish name must be between 3 and 100 characters, containing only letters, numbers, and spaces<br>");
+                hasError = true;
+            }
+            
+            // Check for duplicate name
+            if (!hasError) {
+                DishDAO dao = new DishDAO();
+                List<Dish> dishList = dao.getAll();
+                
+                for (Dish dish : dishList) {
+                    if (areVietnameseStringsEqual(dish.getDishName(), name)) {
+                        errorMessage.append("Dish name already exists. Please choose a different name.<br>");
+                        hasError = true;
+                        break;
+                    }
+                }
             }
         }
+        
+        // Validate price
+        double price = 0;
+        if (price_raw == null || price_raw.trim().isEmpty()) {
+            errorMessage.append("Price must be a valid number between 1000 and 999,999,999<br>");
+            hasError = true;
+        } else {
+            try {
+                // Check digits count
+                String digitsOnly = price_raw.replaceAll("[^0-9]", "");
 
-        // Nếu tên món ăn bị trùng, thông báo lỗi và yêu cầu nhập lại
-        if (isDuplicate) {
-            request.setAttribute("error", "Dish name already exists. Please choose a different name.");
+                if (digitsOnly.length() > 9) {
+                    errorMessage.append("Price must be a valid number between 1000 and 999,999,999<br>");
+                    hasError = true;
+                } else if (digitsOnly.length() < 4) {  // Add this new check
+                    errorMessage.append("Price must be a valid number between 1000 and 999,999,999<br>");
+                    hasError = true;
+                } else {
+                    price = Double.parseDouble(price_raw);
+                    if (price <= 0) {
+                        errorMessage.append("Price must be a valid number between 1000 and 999,999,999<br>");
+                        hasError = true;
+                    }
+                }
+            } catch (NumberFormatException e) {
+                errorMessage.append("Price must be a valid number between 1000 and 999,999,999<br>");
+                hasError = true;
+            }
+        }
+        
+        // Validate status
+        if (status == null || (!status.equals("yes") && !status.equals("no"))) {
+            errorMessage.append("Status must be 'yes' or 'no'.<br>");
+            hasError = true;
+        }
+        
+        // Validate image URL
+        if (image == null || image.trim().isEmpty()) {
+            errorMessage.append("Image URL must be between 16 and 255 characters and start with http:// or https://<br>");
+            hasError = true;
+        } else if (image.length() < 16 || image.length() > 255 || !Pattern.matches("^https?://.*$", image)) {
+            errorMessage.append("Image URL must be between 16 and 255 characters and start with http:// or https://<br>");
+            hasError = true;
+        }
+        
+        // If there are validation errors, return to the form
+        if (hasError) {
+            request.setAttribute("error", errorMessage.toString());
+            request.setAttribute("name", name);
+            request.setAttribute("price", price_raw);
+            request.setAttribute("status", status);
+            request.setAttribute("image", image);
             request.getRequestDispatcher("./createDish.jsp").forward(request, response);
             return;
         }
+        
         try {
-            double price = Double.parseDouble(price_raw);
-            Dish newd = new Dish(0, name, price, status,image);
+            DishDAO dao = new DishDAO();
+            Dish newd = new Dish(0, name, price, status, image);
             dao.insert(newd);
             response.sendRedirect("getDish");
-        } catch (NumberFormatException e) {
-            request.setAttribute("error", "Invalid input for price. Please enter a numeric value.");
-            request.getRequestDispatcher("./createDish.jsp").forward(request, response);
         } catch (Exception e) {
             System.out.println(e);
             request.setAttribute("error", "An unexpected error occurred. Please try again.");
+            request.setAttribute("name", name);
+            request.setAttribute("price", price_raw);
+            request.setAttribute("status", status);
+            request.setAttribute("image", image);
             request.getRequestDispatcher("./createDish.jsp").forward(request, response);
         }
     }
@@ -122,5 +209,4 @@ public class addDish extends HttpServlet {
     public String getServletInfo() {
         return "Short description";
     }// </editor-fold>
-
 }
