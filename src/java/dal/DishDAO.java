@@ -18,7 +18,7 @@ import java.sql.SQLException;
  */
 
 public class DishDAO extends DBContext {
-
+    
     public ArrayList<Dish> getAll() {
         ArrayList<Dish> list = new ArrayList<>();
         String sql = "SELECT * FROM Dish";
@@ -46,7 +46,7 @@ public class DishDAO extends DBContext {
         String sql = "INSERT INTO [dbo].[Dish] ( DishName, Price, Status,ImageLink) VALUES (?, ?, ?,?)";
         try {
             PreparedStatement st = connection.prepareStatement(sql);
-          
+       
             st.setString(1, d.getDishName());
             st.setDouble(2, d.getPrice());
             st.setString(3, d.getStatus());
